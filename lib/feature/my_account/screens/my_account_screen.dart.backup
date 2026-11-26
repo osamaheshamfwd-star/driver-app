@@ -1,0 +1,606 @@
+import 'package:stackfood_multivendor_driver/common/widgets/custom_bottom_sheet_widget.dart';
+import 'package:stackfood_multivendor_driver/common/widgets/custom_card.dart';
+import 'package:stackfood_multivendor_driver/common/widgets/custom_snackbar_widget.dart';
+import 'package:stackfood_multivendor_driver/feature/my_account/controllers/my_account_controller.dart';
+import 'package:stackfood_multivendor_driver/feature/my_account/domain/models/wallet_payment_model.dart';
+import 'package:stackfood_multivendor_driver/feature/my_account/widgets/payment_method_bottom_sheet_widget.dart';
+import 'package:stackfood_multivendor_driver/feature/my_account/widgets/wallet_attention_alert_widget.dart';
+import 'package:stackfood_multivendor_driver/feature/profile/controllers/profile_controller.dart';
+import 'package:stackfood_multivendor_driver/feature/profile/domain/models/profile_model.dart';
+import 'package:stackfood_multivendor_driver/feature/splash/controllers/splash_controller.dart';
+import 'package:stackfood_multivendor_driver/helper/price_converter_helper.dart';
+import 'package:stackfood_multivendor_driver/util/dimensions.dart';
+import 'package:stackfood_multivendor_driver/util/styles.dart';
+import 'package:stackfood_multivendor_driver/common/widgets/custom_app_bar_widget.dart';
+import 'package:stackfood_multivendor_driver/common/widgets/custom_button_widget.dart';
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MyAccountScreen — Delivery-man wallet
+//
+// UI redesign (Step 2). No API / controller changes in this step.
+// - Orange banner card (same visual family as restaurant WalletScreen._BannerCard)
+// - "Pay Now" + optional "Adjust Payments" buttons moved below the banner
+// - Two stat cards:
+//     "money_owed_to_you" → profileModel.withDrawableBalance (his earnings)
+//     "money_you_owe"     → profileModel.cashInHands (collected cash not yet handed over)
+// - Static tab bar ("المستحق" / "مدفوع") — non-functional placeholder
+// - Static calendar filter button — non-functional placeholder
+// - Transaction list preserved as-is; no special styling for any row type
+// - WalletAttentionAlertWidget kept at the bottom of the Column
+// ─────────────────────────────────────────────────────────────────────────────
+
+class MyAccountScreen extends StatefulWidget {
+  const MyAccountScreen({super.key});
+
+  @override
+  State<MyAccountScreen> createState() => _MyAccountScreenState();
+}
+
+class _MyAccountScreenState extends State<MyAccountScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    // Tab 0 = "المستحق" (due), Tab 1 = "مدفوع" (paid) — mirrors restaurant wallet
+    _tabController = TabController(length: 2, vsync: this);
+    Get.find<ProfileController>().getProfile();
+    Get.find<MyAccountController>().getWalletPaymentList();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: CustomAppBarWidget(
+        title: 'my_account'.tr,
+        isBackButtonExist: false,
+      ),
+
+      body: GetBuilder<MyAccountController>(builder: (myAccountController) {
+        return GetBuilder<ProfileController>(builder: (profileController) {
+          final profile = profileController.profileModel;
+          final transactions = myAccountController.transactions;
+
+          if (profile == null || transactions == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+
+              // ── Top cards section ─────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  Dimensions.paddingSizeLarge,
+                  Dimensions.paddingSizeLarge,
+                  Dimensions.paddingSizeLarge,
+                  0,
+                ),
+                child: Column(children: [
+
+                  // 1. Orange banner card — slim, same visual language as
+                  //    restaurant WalletScreen._BannerCard
+                  _BannerCard(profile: profile),
+                  const SizedBox(height: Dimensions.paddingSizeDefault),
+
+                  // 2. Action buttons below the banner (option a per confirmed design)
+                  _ActionButtons(
+                    profile: profile,
+                    myAccountController: myAccountController,
+                  ),
+                  const SizedBox(height: Dimensions.paddingSizeDefault),
+
+                  // 3. Two white stat cards side by side
+                  Row(children: [
+                    Expanded(
+                      child: _StatCard(
+                        label: 'money_owed_to_you'.tr,
+                        value: profile.withDrawableBalance,
+                      ),
+                    ),
+                    const SizedBox(width: Dimensions.paddingSizeDefault),
+                    Expanded(
+                      child: _StatCard(
+                        label: 'money_you_owe'.tr,
+                        value: profile.cashInHands,
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: Dimensions.paddingSizeSmall),
+
+                ]),
+              ),
+
+              // ── Tab bar — placeholder, not wired to API yet ───────────────
+              _WalletTabBar(tabController: _tabController),
+
+              // ── Filter row — static placeholder, calendar icon only ────────
+              const _FilterRowPlaceholder(),
+
+              // ── Tab content ───────────────────────────────────────────────
+              Expanded(
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    // Tab 0 — existing transaction list (all rows normal, no
+                    //          special treatment for any entry type)
+                    _TransactionList(transactions: transactions),
+
+                    // Tab 1 — empty placeholder until API is wired
+                    Center(
+                      child: Text(
+                        'no_transaction_found'.tr,
+                        style: robotoMedium.copyWith(
+                          color: Theme.of(context).hintColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // ── Bottom overflow warning — preserved from original ──────────
+              if (profile.overFlowWarning! || profile.overFlowBlockWarning!)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    Dimensions.paddingSizeLarge,
+                    0,
+                    Dimensions.paddingSizeLarge,
+                    Dimensions.paddingSizeLarge,
+                  ),
+                  child: WalletAttentionAlertWidget(
+                    isOverFlowBlockWarning: profile.overFlowBlockWarning!,
+                  ),
+                ),
+
+            ],
+          );
+        });
+      }),
+    );
+  }
+}
+
+// ─── Orange Banner Card ───────────────────────────────────────────────────────
+//
+// Visual twin of restaurant WalletScreen._BannerCard.
+// Shows: wallet icon (frosted circle) | label "payable_amount" | payableBalance
+// Pay-now / adjust buttons intentionally moved below (see _ActionButtons).
+
+class _BannerCard extends StatelessWidget {
+  final ProfileModel profile;
+  const _BannerCard({required this.profile});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+        horizontal: Dimensions.paddingSizeLarge,
+        vertical: Dimensions.paddingSizeDefault,
+      ),
+      decoration: BoxDecoration(
+        color: Theme.of(context).primaryColor,
+        borderRadius: BorderRadius.circular(Dimensions.radiusDefault),
+      ),
+      // AlignmentDirectional.centerStart = right edge in RTL
+      child: Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Icon in frosted pill — mirrors restaurant banner's icon treatment
+            Container(
+              padding: const EdgeInsets.all(Dimensions.paddingSizeSmall),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(Dimensions.radiusDefault),
+              ),
+              child: const Icon(
+                Icons.account_balance_wallet_outlined,
+                color: Colors.white,
+                size: 32,
+              ),
+            ),
+            const SizedBox(width: Dimensions.paddingSizeDefault),
+
+            // Label + amount text column
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  'payable_amount'.tr,
+                  style: robotoRegular.copyWith(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    fontSize: Dimensions.fontSizeDefault,
+                  ),
+                ),
+                const SizedBox(height: Dimensions.paddingSizeExtraSmall),
+                Text(
+                  PriceConverter.convertPrice(profile.payableBalance),
+                  textDirection: TextDirection.ltr, // keep LTR for numerals
+                  style: robotoBlack.copyWith(
+                    color: Colors.white,
+                    fontSize: Dimensions.fontSizeOverLarge,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Action Buttons Row (below the banner) ────────────────────────────────────
+//
+// "Adjust Payments" — visible only when profile.adjustable == true
+//                      rendered as outlined button (secondary action)
+// "Pay Now"         — always visible; enabled/disabled by showPayNowButton flag
+//                      logic identical to the original onTap handler
+//
+// When adjustable == false:  [    Pay Now (full width)    ]
+// When adjustable == true:   [ Adjust Payments ][ Pay Now ]
+
+class _ActionButtons extends StatelessWidget {
+  final ProfileModel profile;
+  final MyAccountController myAccountController;
+  const _ActionButtons({
+    required this.profile,
+    required this.myAccountController,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [
+
+      // Optional "Adjust Payments" outlined button
+      if (profile.adjustable ?? false) ...[
+        Expanded(
+          child: OutlinedButton(
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (BuildContext context) {
+                  return GetBuilder<MyAccountController>(
+                    builder: (ctrl) {
+                      return AlertDialog(
+                        title: Center(child: Text('cash_adjustment'.tr)),
+                        content: Text(
+                          'cash_adjustment_description'.tr,
+                          textAlign: TextAlign.center,
+                        ),
+                        actions: [
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Row(children: [
+                              Expanded(
+                                child: CustomButtonWidget(
+                                  onPressed: () => Get.back(),
+                                  backgroundColor: Theme.of(context)
+                                      .hintColor
+                                      .withValues(alpha: 0.5),
+                                  buttonText: 'cancel'.tr,
+                                ),
+                              ),
+                              const SizedBox(
+                                  width: Dimensions.paddingSizeExtraLarge),
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () {
+                                    ctrl.makeWalletAdjustment();
+                                  },
+                                  child: Container(
+                                    height: 45,
+                                    alignment: Alignment.center,
+                                    padding: const EdgeInsets.all(
+                                        Dimensions.paddingSizeSmall),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(
+                                          Dimensions.radiusSmall),
+                                      color: Theme.of(context).primaryColor,
+                                    ),
+                                    child: !ctrl.isLoading
+                                        ? Text(
+                                            'ok'.tr,
+                                            style: robotoBold.copyWith(
+                                              color:
+                                                  Theme.of(context).cardColor,
+                                              fontSize:
+                                                  Dimensions.fontSizeLarge,
+                                            ),
+                                          )
+                                        : const SizedBox(
+                                            height: 20,
+                                            width: 20,
+                                            child: CircularProgressIndicator(
+                                                color: Colors.white),
+                                          ),
+                                  ),
+                                ),
+                              ),
+                            ]),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              );
+            },
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Theme.of(context).primaryColor,
+              side: BorderSide(color: Theme.of(context).primaryColor),
+              shape: RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.circular(Dimensions.radiusDefault),
+              ),
+              padding: const EdgeInsets.symmetric(
+                  vertical: Dimensions.paddingSizeSmall),
+            ),
+            child: Text(
+              'adjust_payments'.tr,
+              style: robotoMedium.copyWith(
+                fontSize: Dimensions.fontSizeSmall,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: Dimensions.paddingSizeDefault),
+      ],
+
+      // "Pay Now" button — full-width when alone, half-width when adjust is shown
+      Expanded(
+        child: ElevatedButton(
+          onPressed: (profile.showPayNowButton ?? false)
+              ? () {
+                  final splash = Get.find<SplashController>();
+                  if (splash.configModel!.activePaymentMethodList!.isEmpty ||
+                      !splash.configModel!.digitalPayment!) {
+                    showCustomSnackBar(
+                      'currently_there_are_no_payment_options_available_please_contact_admin_regarding_any_payment_process_or_queries'
+                          .tr,
+                    );
+                  } else if (splash.configModel!.minAmountToPayDm! >
+                      profile.payableBalance!) {
+                    showCustomSnackBar(
+                      '${'you_do_not_have_sufficient_balance_to_pay_the_minimum_payable_balance_is'.tr} '
+                      '${PriceConverter.convertPrice(splash.configModel!.minAmountToPayDm)}',
+                    );
+                  } else {
+                    showCustomBottomSheet(
+                        child: const PaymentMethodBottomSheetWidget());
+                  }
+                }
+              : null,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: (profile.showPayNowButton ?? false)
+                ? Theme.of(context).primaryColor
+                : Theme.of(context).hintColor.withValues(alpha: 0.8),
+            foregroundColor: Theme.of(context).cardColor,
+            disabledBackgroundColor:
+                Theme.of(context).hintColor.withValues(alpha: 0.8),
+            disabledForegroundColor: Theme.of(context).cardColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(Dimensions.radiusDefault),
+            ),
+            padding: const EdgeInsets.symmetric(
+                vertical: Dimensions.paddingSizeSmall),
+            elevation: 0,
+          ),
+          child: Text(
+            'pay_now'.tr,
+            style: robotoMedium.copyWith(
+              fontSize: Dimensions.fontSizeDefault,
+              color: Theme.of(context).cardColor,
+            ),
+          ),
+        ),
+      ),
+
+    ]);
+  }
+}
+
+// ─── Stat Card ────────────────────────────────────────────────────────────────
+//
+// Mirrors restaurant WalletScreen._StatCard but using CustomCard wrapper
+// (same widget used by the original DM screen).
+// Value style: bold primary-colour amount (LTR), hint-colour label below.
+
+class _StatCard extends StatelessWidget {
+  final String label;
+  final double? value;
+  const _StatCard({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomCard(
+      isBorder: false,
+      padding: const EdgeInsets.all(Dimensions.paddingSizeDefault),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value != null ? PriceConverter.convertPrice(value) : '---',
+            textDirection: TextDirection.ltr, // keep LTR for numerals
+            style: robotoBold.copyWith(
+              fontSize: Dimensions.fontSizeDefault,
+              color: Theme.of(context).primaryColor,
+            ),
+          ),
+          const SizedBox(height: Dimensions.paddingSizeExtraSmall),
+          Text(
+            label,
+            textAlign: TextAlign.start, // start = right in RTL
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: robotoRegular.copyWith(
+              color: Theme.of(context).hintColor,
+              fontSize: Dimensions.fontSizeSmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Tab Bar ─────────────────────────────────────────────────────────────────
+//
+// Static placeholder — visual twin of restaurant WalletScreen._WalletTabBar.
+// Tab 0: "المستحق" (due)   — right side in RTL, active by default
+// Tab 1: "مدفوع"   (paid)  — left side in RTL
+// Not wired to any API filtering logic yet.
+
+class _WalletTabBar extends StatelessWidget {
+  final TabController tabController;
+  const _WalletTabBar({required this.tabController});
+
+  @override
+  Widget build(BuildContext context) {
+    return TabBar(
+      controller: tabController,
+      labelStyle: robotoMedium,
+      unselectedLabelStyle: robotoRegular,
+      labelColor: Theme.of(context).primaryColor,
+      unselectedLabelColor: Theme.of(context).hintColor,
+      indicatorColor: Theme.of(context).primaryColor,
+      indicatorWeight: 2.5,
+      indicatorSize: TabBarIndicatorSize.tab,
+      tabs: [
+        Tab(text: 'due'.tr),   // index 0 → right in RTL, default active
+        Tab(text: 'paid'.tr),  // index 1 → left in RTL
+      ],
+    );
+  }
+}
+
+// ─── Filter Row (static placeholder) ─────────────────────────────────────────
+//
+// Calendar icon button — identical visual to restaurant WalletScreen._FilterRow
+// but with no onTap logic yet. Will be wired when API filter is implemented.
+
+class _FilterRowPlaceholder extends StatelessWidget {
+  const _FilterRowPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: Dimensions.paddingSizeLarge,
+        vertical: Dimensions.paddingSizeSmall,
+      ),
+      child: Row(children: [
+        Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(Dimensions.radiusSmall),
+            border: Border.all(
+              color: Theme.of(context).hintColor.withValues(alpha: 0.4),
+            ),
+          ),
+          padding: const EdgeInsets.all(Dimensions.paddingSizeSmall),
+          child: Icon(
+            Icons.calendar_today_outlined,
+            color: Theme.of(context).hintColor,
+            size: 20,
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+// ─── Transaction List (Tab 0 content) ────────────────────────────────────────
+//
+// Preserved from original my_account_screen.dart.
+// All rows render identically regardless of method / type field — no special
+// icon, tag, badge, or styling for any entry type (including free-delivery
+// compensation entries).
+
+class _TransactionList extends StatelessWidget {
+  final List<Transactions> transactions;
+  const _TransactionList({required this.transactions});
+
+  @override
+  Widget build(BuildContext context) {
+    if (transactions.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(Dimensions.paddingSizeLarge),
+          child: Text(
+            'no_transaction_found'.tr,
+            style: robotoMedium.copyWith(
+              color: Theme.of(context).hintColor,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    final int displayCount =
+        transactions.length > 25 ? 25 : transactions.length;
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(
+        horizontal: Dimensions.paddingSizeLarge,
+        vertical: Dimensions.paddingSizeSmall,
+      ),
+      itemCount: displayCount,
+      itemBuilder: (context, index) {
+        final tx = transactions[index];
+        final bool isLast = index == displayCount - 1;
+        return Column(children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(
+                vertical: Dimensions.paddingSizeLarge),
+            child: Row(children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      PriceConverter.convertPrice(tx.amount),
+                      style: robotoBold,
+                      textDirection: TextDirection.ltr,
+                    ),
+                    const SizedBox(height: Dimensions.paddingSizeExtraSmall),
+                    Text(
+                      '${'paid_via'.tr} ${tx.method?.replaceAll('_', ' ').capitalize ?? ''}',
+                      style: robotoRegular.copyWith(
+                        fontSize: Dimensions.fontSizeExtraSmall,
+                        color: Theme.of(context).hintColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                tx.paymentTime.toString(),
+                style: robotoRegular.copyWith(
+                  fontSize: Dimensions.fontSizeSmall,
+                  color: Theme.of(context).hintColor,
+                ),
+              ),
+            ]),
+          ),
+          if (!isLast) const Divider(height: 1),
+        ]);
+      },
+    );
+  }
+}

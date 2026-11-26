@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "192119759129",
+    "project_id": "alatol-app",
+    "storage_bucket": "alatol-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:192119759129:android:bf1ae45e927cba23ac6588",
+        "android_client_info": {
+          "package_name": "com.alatol.alatoldelivery"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDfALAfZesDIWYiDUsOhHMmwydlB8o0srU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:192119759129:android:b547c9d43d9a56d2ac6588",
+        "android_client_info": {
+          "package_name": "com.alatol.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDfALAfZesDIWYiDUsOhHMmwydlB8o0srU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:192119759129:android:121f894e644ef4cfac6588",
+        "android_client_info": {
+          "package_name": "com.sixamtech.stackfooduser"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDfALAfZesDIWYiDUsOhHMmwydlB8o0srU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
