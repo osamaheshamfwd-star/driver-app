@@ -1,38 +1,62 @@
-name: Build APK
+name: Build Flutter APK and AAB
 
 on:
+  push:
+    branches: [ "master", "main" ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Java 17
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: 'zulu'
           java-version: '17'
 
-      - name: Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: '3.35.7'
+          channel: 'stable'
           cache: true
 
-      - name: Flutter version
-        run: flutter --version
+      - run: flutter --version
 
-      - name: Get packages
-        run: flutter pub get
+      - name: Fix legacy wildcard params
+        run: |
+          grep -rlE "\(_, *_(, *_)*\)" lib | xargs -r sed -i -E 's/\(_, *_, *_\)/(_, __, ___)/g; s/\(_, *_\)/(_, __)/g'
 
-      - name: Build release APK
-        run: flutter build apk --release
+      - run: flutter pub get
+      - name: Generate launcher icons
+        run: dart run flutter_launcher_icons
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - name: Setup signing
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
+          cat > android/key.properties <<EOF
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=upload-keystore.jks
+          EOF
+
+      - name: Build APK
+        run: flutter build apk --release --android-skip-build-dependency-validation --no-tree-shake-icons
+        timeout-minutes: 45
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: app-release
+          name: app-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Build AAB
+        run: flutter build appbundle --release --android-skip-build-dependency-validation --no-tree-shake-icons
+        timeout-minutes: 45
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release-bundle
+          path: build/app/outputs/bundle/release/app-release.aab
